@@ -1,57 +1,92 @@
 import pandas as pd
+from sqlmodel import SQLModel, Field, create_engine, Session,select
 from datetime import datetime
-from sqlmodel import create_engine, Session, Field, SQLModel, select
-from sqlalchemy import func
+from fastapi import FastAPI,Depends,HTTPException
+from typing import Annotated
 
-
-class Transactions(SQLModel, table=True):
-    id: int = Field(default=None, primary_key=True, unique=True)
+class Transaction(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
     date: datetime
     value: int
-    partner: str | None
+    partner: str
 
     @classmethod
-    def from_entry(cls, transaction_entry):
-        raw_value = str(transaction_entry["Összeg"]).replace("\xa0", "")
+    def from_entry(cls, row):
+        value = int(str(row["Összeg"]).replace("\xa0", ""))
+
+        # pozitív értéket nem mentünk
+        if value > 0:
+            return None
+
         return cls(
-            date=transaction_entry["Könyvelés dátuma"],
-            value=int(raw_value),
-            partner=str(transaction_entry["Partner név"])
+            date=pd.to_datetime(row["Könyvelés dátuma"]).to_pydatetime(),
+            value=value,
+            partner=str(row["Partner név"])
         )
 
 
-# --- DATABASE ---
-engine = create_engine("sqlite:///test.db")
+engine = create_engine("sqlite:///test2.db")
 
-# MINDEN INDULÁSKOR RESETELJÜK A TÁBLÁKAT
 SQLModel.metadata.drop_all(bind=engine)
 SQLModel.metadata.create_all(bind=engine)
 
-db = Session(bind=engine)
+
+with Session(engine) as db:
+    df = pd.read_csv("adatok.csv", encoding="utf-16")
+    inserted = 0
+    skipped = 0
+    for _, row in df.iterrows():
+        tr = Transaction.from_entry(row)
+
+        if tr is None:
+            skipped += 1
+            continue
+
+        db.add(tr)
+        inserted += 1
+
+    db.commit()
+
+print(f"Inserted: {inserted}, Skipped: {skipped}")
 
 
-# --- EXCEL BEOLVASÁS ---
-a = pd.read_excel("adatok_excel.xlsx")
+def get_db():
+    with Session(engine) as session:
+        yield session
 
-for index, row in a.iterrows():
-    c_tr = Transactions.from_entry(row)
-    db.add(c_tr)
-
-db.commit()
+SessionDep = Annotated[Session, Depends(get_db)]
 
 
-# --- WOLT ÉRTÉKEK ÖSSZEGZÉSE (DB OLDALON) ---
-result = db.exec(
-    select(func.sum(Transactions.value)).where(Transactions.partner.ilike("%Wolt%"))
-).all()
+app = FastAPI()
 
-raw = result[0] if result else None
 
-if isinstance(raw, (tuple, list)):
-    total = raw[0]
-else:
-    total = raw
+@app.get("/")
+def start():
+    return "start"
 
-total = int(total) if total is not None else 0
+@app.get("/transactions")
+def read_transactions(db: SessionDep):
+    return db.query(Transaction).all()
 
-print("Wolt összeg:", total)
+@app.get("/transactions/{transaction_id}")
+def read_transaction(transaction_id: int,session: SessionDep) -> Transaction:
+    transaction = session.get(Transaction, transaction_id)
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return transaction
+
+
+@app.get("/transactions/by/{partner}")
+def read_transactions_by_partner(
+    partner: str,
+    session: SessionDep
+) -> list[Transaction]:
+    statement = select(Transaction).where(Transaction.partner == partner)
+    transactions = session.exec(statement).all()
+
+    if not transactions:
+        raise HTTPException(status_code=404, detail="No transactions found for this partner")
+
+    return transactions
+
+

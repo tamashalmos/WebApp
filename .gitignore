@@ -1,3 +1,5 @@
-*db
-*xlsx
+*.db
+*.xlsx
+*.csv
 *.pyc
+.venv

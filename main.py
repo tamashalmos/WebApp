@@ -1,49 +1,36 @@
-from typing import Union
-from sqlmodel import Session
-from fastapi import FastAPI, Depends,UploadFile,File
-from engine import get_db, Hero
-import pandas as pd
+from fastapi import FastAPI, HTTPException
+from sqlmodel import select
+
+from db import SessionDep
+from models import Transaction
 
 app = FastAPI()
 
 @app.get("/")
-def read_root():
-    return {"Hello": "World"}
-"""  
-@app.post("/hero")
-def create_hero(hero_name: str, hero_secret_name: str, hero_age: int, db: Session = Depends(get_db)) -> Hero:
-    obj = Hero(
-        name=hero_name,
-        secret_name=hero_secret_name,
-        age=hero_age,
-    )
-    db.add(obj)
-    db.commit()
-    db.refresh(obj)
-    return obj
+def start():
+    return "start"
 
-@app.get("/hero")
-def get_hero(hero_id: int, db: Session = Depends(get_db)) -> Hero:
-    return db.query(Hero).where(Hero.id == hero_id).first()
+@app.get("/transactions")
+def read_transactions(session: SessionDep) -> list[Transaction]:
+    statement = select(Transaction)
+    return session.exec(statement).all()
 
-@app.get("/heroes")
-def get_heroes(db: Session = Depends(get_db)) -> list[Hero]:
-    return db.query(Hero).all()
+@app.get("/transactions/{transaction_id}")
+def read_transaction(transaction_id: int,session: SessionDep)  -> Transaction:
+    transaction = session.get(Transaction, transaction_id)
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return transaction
 
-@app.delete("/hero")
-def delete_hero(hero_id: int, db: Session = Depends(get_db)):
-    obj = db.query(Hero).where(Hero.id == hero_id).first()
-    if obj:
-        db.delete(obj)
-        db.commit()
-"""
+@app.get("/transactions/by/{partner}")
+def read_transactions_by_partner(
+    partner: str,
+    session: SessionDep
+) -> list[Transaction]:
+    statement = select(Transaction).where(Transaction.partner == partner)
+    transactions = session.exec(statement).all()
 
-@app.post("/upload-excel")
-async def upload_excel(file: UploadFile = File(...)):
+    if not transactions:
+        raise HTTPException(status_code=404, detail="No transactions found for this partner")
 
-    if file.filename.lower().endswith(".csv"):
-        df = pd.read_csv(file.file)
-    else:
-        df = pd.read_excel(file.file)
-
-    return df.to_dict(orient="records")
+    return transactions

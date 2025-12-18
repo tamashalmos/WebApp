@@ -1,15 +1,14 @@
-from engine import Hero, engine
-from sqlmodel import SQLModel, Session
+import pandas as pd
+from sqlmodel import Session
+from db import engine
+from importer import transaction_from_entry
 
-SQLModel.metadata.drop_all(bind=engine)
-SQLModel.metadata.create_all(engine)
+with Session(engine) as session:
+    df = pd.read_csv("adatok.csv", encoding="utf-16")
 
-db = Session(engine)
+    for _, row in df.iterrows():
+        tr = transaction_from_entry(row)
+        if tr:
+            session.add(tr)
 
-db.add(Hero(name="Tomasz", secret_name="Tomszoyer", age=20))
-db.add(Hero(name="Adam", secret_name="Papoca", age=33))
-db.add(Hero(name="Domi", secret_name="SzamiMami", age=34))
-db.add(Hero(name="Daci", secret_name="DaciPapa", age=30))
-db.add(Hero(name="Adel", secret_name="Adus", age=30))
-
-db.commit()
+    session.commit()
