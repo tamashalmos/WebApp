@@ -1,8 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from sqlmodel import select
 
-from db import SessionDep
-from models import Transaction
+from api.db import SessionDep
+from api.models import Transaction
 
 app = FastAPI()
 

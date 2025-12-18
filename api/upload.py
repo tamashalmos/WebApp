@@ -22,7 +22,7 @@ SQLModel.metadata.create_all(bind=engine)
 
 
 with Session(engine) as session:
-    df = pd.read_csv("adatok.csv", encoding="utf-16")
+    df = pd.read_csv("api/data/adatok.csv", encoding="utf-16")
 
     for _, row in df.iterrows():
         tr = transaction_from_entry(row)
