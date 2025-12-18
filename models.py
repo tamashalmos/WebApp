@@ -17,9 +17,7 @@ class Transaction(SQLModel, table=True):
             return None
 
         return cls(
-            dt = pd.to_datetime(row["Könyvelés dátuma"], errors="coerce")
-            if pd.isna(dt):
-                return None
+            date=pd.to_datetime(row["Könyvelés dátuma"]).date(),
             value=value,
             partner=str(row["Partner név"])
         )
